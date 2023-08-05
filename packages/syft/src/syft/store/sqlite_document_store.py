@@ -301,6 +301,61 @@ class SQLiteBackingStore(KeyValueBackingStore):
             pass
 
 
+@serializable(attrs=["index_name", "settings", "store_config"])
+class SQLiteLiveBackingStore(SQLiteBackingStore):
+
+    def _get(self, key: UID) -> Any:
+        from ..types.twin_object import TwinObject
+        from ..service.action.live_data_frame import LiveDataFrameObject, LiveDataFrame
+        retrieved_object = super()._get(key)
+        if type(retrieved_object) is TwinObject:
+            if type(retrieved_object.mock) is LiveDataFrameObject:
+                mock_df = self._fetch_live_data(retrieved_object.mock.syft_action_data.db_args)
+                mock = LiveDataFrame()
+                mock.df = mock_df
+                retrieved_object.mock.syft_action_data = mock
+            if type(retrieved_object.private) is LiveDataFrameObject:
+                private_df = self._fetch_live_data(retrieved_object.private.syft_action_data.db_args)
+                private = LiveDataFrame()
+                private.df = private_df
+                retrieved_object.private.syft_action_data = private
+        return retrieved_object
+
+    @staticmethod
+    def _fetch_live_data(args):
+        import psycopg2
+        from pandas import DataFrame
+        try:
+            conn = psycopg2.connect(
+                host=args["host"],
+                port=args["port"],
+                user=args["user"],
+                password=args["password"],
+                database=args["db"]
+            )
+            cursor = conn.cursor()
+
+            # Build the SQL query to select all rows from the indicated table
+            query = f"SELECT * FROM {args['table']};"
+
+            # Execute the query and fetch all rows
+            cursor.execute(query)
+            rows = cursor.fetchall()
+
+            # Get the column names from the cursor description
+            col_names = [desc[0] for desc in cursor.description]
+
+            # Close the cursor and connection
+            cursor.close()
+            conn.close()
+
+            # Initialize the DataFrame using the fetched data
+            return DataFrame(rows, columns=col_names)
+
+        except (psycopg2.Error, Exception) as e:
+            print(f"Error: {e}")
+
+
 @serializable()
 class SQLiteStorePartition(KeyValueStorePartition):
     """SQLite StorePartition
@@ -406,5 +461,5 @@ class SQLiteStoreConfig(StoreConfig):
 
     client_config: SQLiteStoreClientConfig
     store_type: Type[DocumentStore] = SQLiteDocumentStore
-    backing_store: Type[KeyValueBackingStore] = SQLiteBackingStore
+    backing_store: Type[KeyValueBackingStore] = SQLiteLiveBackingStore
     locking_config: LockingConfig = FileLockingConfig()

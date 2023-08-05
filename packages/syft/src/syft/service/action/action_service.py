@@ -38,6 +38,7 @@ from .action_types import action_type_for_type
 from .numpy import NumpyArrayObject
 from .pandas import PandasDataFrameObject  # noqa: F401
 from .pandas import PandasSeriesObject  # noqa: F401
+from .live_data_frame import LiveDataFrameObject  # noqa: F401
 
 
 @serializable()
